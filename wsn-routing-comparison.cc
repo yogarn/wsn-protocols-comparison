@@ -79,6 +79,32 @@ void IpRxTraceNoContext(Ptr<const Packet> packet, Ptr<Ipv4> ipv4, unsigned int i
     NS_LOG_UNCOND("IP RX: iface=" << interface << " size=" << packet->GetSize());
 }
 
+void SendPhPacket(Ptr<Socket> socket, uint32_t packetSize)
+{
+    double ph = 5.5 + ((rand() % 100) / 100.0);
+
+    std::ostringstream msg;
+    msg << "PH:" << ph;
+
+    std::string payload = msg.str();
+
+    if (payload.size() < packetSize)
+        payload.append(packetSize - payload.size(), '0');
+    else
+        payload = payload.substr(0, packetSize);
+
+    Ptr<Packet> packet =
+        Create<Packet>((uint8_t*)payload.c_str(),
+                        payload.size());
+
+    socket->Send(packet);
+
+    Simulator::Schedule(Seconds(1.0),
+                        &SendPhPacket,
+                        socket,
+                        packetSize);
+}
+
 int main(int argc, char *argv[])
 {
     // ==============================
@@ -225,7 +251,7 @@ int main(int argc, char *argv[])
     // last node in topology
     uint32_t destinationNode = numNodes - 1;
 
-    uint16_t port = 9;
+    uint16_t port = 5000;
 
     // Packet receiver
     PacketSinkHelper sinkHelper(
@@ -243,35 +269,21 @@ int main(int argc, char *argv[])
     // Create traffic sources
     for (uint32_t i = 0; i < numSources; i++)
     {
-        OnOffHelper onoff(
-            "ns3::UdpSocketFactory",
+        Ptr<Socket> socket =
+            Socket::CreateSocket(nodes.Get(i),
+                                UdpSocketFactory::GetTypeId());
+
+        InetSocketAddress remote =
             InetSocketAddress(
                 interfaces.GetAddress(destinationNode),
-                port));
+                port);
 
-        onoff.SetAttribute(
-            "DataRate",
-            StringValue("64kbps"));
+        socket->Connect(remote);
 
-        onoff.SetAttribute(
-            "PacketSize",
-            UintegerValue(packetSize));
-
-        onoff.SetAttribute(
-            "OnTime",
-            StringValue(
-                "ns3::ConstantRandomVariable[Constant=1]"));
-
-        onoff.SetAttribute(
-            "OffTime",
-            StringValue(
-                "ns3::ConstantRandomVariable[Constant=0]"));
-
-        ApplicationContainer app =
-            onoff.Install(nodes.Get(i));
-
-        app.Start(Seconds(15.0 + i));
-        app.Stop(Seconds(simulationTime - 1));
+        Simulator::Schedule(Seconds(15.0 + i),
+                            &SendPhPacket,
+                            socket,
+                            packetSize);
     }
 
     // ==============================
@@ -450,3 +462,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
