@@ -1,7 +1,7 @@
 // File: wsn-routing-comparison.cc
 //
 // Simple NS-3 Wireless Sensor Network simulation
-// Comparing AODV (reactive) and DSDV (proactive)
+// Comparing AODV (reactive) and OLSR (proactive)
 //
 // This is intentionally beginner-friendly.
 // Do not expect elegance. Academic code survives mostly through ritual.
@@ -30,6 +30,8 @@
 #include "ns3/applications-module.h"
 #include "ns3/flow-monitor-module.h"
 #include "ns3/netanim-module.h"
+#include <filesystem>
+#include <fstream>
 
 using namespace ns3;
 
@@ -80,6 +82,15 @@ void IpRxTraceNoContext(Ptr<const Packet> packet, Ptr<Ipv4> ipv4, unsigned int i
 int main(int argc, char *argv[])
 {
     // ==============================
+    // CREATE RESULT DIRECTORIES
+    // ==============================
+
+    std::filesystem::create_directories("results/pcap");
+    std::filesystem::create_directories("results/netanim");
+    std::filesystem::create_directories("results/tr");
+    std::filesystem::create_directories("results/xml");
+
+    // ==============================
     // SIMULATION PARAMETERS
     // ==============================
 
@@ -96,7 +107,7 @@ int main(int argc, char *argv[])
 
     // Choose routing protocol:
     // true  = AODV
-    // false = DSDV
+    // false = OLSR
     bool useAodv = true;
 
     // WiFi data rate
@@ -107,7 +118,7 @@ int main(int argc, char *argv[])
     cmd.AddValue("numNodes", "Number of nodes", numNodes);
     cmd.AddValue("packetSize", "Packet size", packetSize);
     cmd.AddValue("numSources", "Number of source nodes", numSources);
-    cmd.AddValue("useAodv", "Use AODV if true, DSDV if false", useAodv);
+    cmd.AddValue("useAodv", "Use AODV if true, OLSR if false", useAodv);
 
     cmd.Parse(argc, argv);
 
@@ -187,7 +198,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        OlsrHelper olsr; // Ganti nama helpernya jadi OLSR
+        OlsrHelper olsr;
         internet.SetRoutingHelper(olsr);
 
         std::cout << "\nUsing OLSR routing (Proactive)\n";
@@ -279,41 +290,46 @@ int main(int argc, char *argv[])
     // Enable packet metadata for NetAnim to track packets
     PacketMetadata::Enable();
 
-    AnimationInterface anim("wsn-animation.xml");
+    std::stringstream animName;
+
+    animName << "results/netanim/"
+            << (useAodv ? "aodv" : "olsr")
+            << "-"
+            << numNodes
+            << "nodes-"
+            << packetSize
+            << "bytes-"
+            << numSources
+            << "sources.xml";
+
+    AnimationInterface anim(animName.str());
     
     // Configure animation for packet visibility
     anim.EnablePacketMetadata(true);
     anim.SetMobilityPollInterval(Seconds(0.1));
     
-    // Enable PCAP tracing to capture all packets
-    std::stringstream ssPcap;
-    ssPcap << "pcap-" 
-           << (useAodv ? "aodv" : "olsr") << "-" 
-           << numNodes << "nodes-" 
-           << packetSize << "bytes-" 
-           << numSources << "sources";
-    
-    std::string prefix = ssPcap.str();
-    phy.EnablePcapAll(prefix);
-    
-    // Configure runtime traces (App, MAC, IP) so unlabeled NetAnim packets are identifiable
-    // Config::Connect("/NodeList/*/ApplicationList/*/$ns3::OnOffApplication/Tx",
-    //                 MakeCallback(&AppTxTrace));
+    // ==============================
+    // PCAP OUTPUT DIRECTORY
+    // ==============================
 
-    // Config::Connect("/NodeList/*/ApplicationList/*/$ns3::PacketSink/Rx",
-    //                 MakeCallback(&AppRxTrace));
+    std::stringstream ssPcapDir;
 
-    // Config::Connect("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/MacTx",
-    //                 MakeCallback(&MacTxTrace));
+    ssPcapDir << "results/pcap/"
+            << (useAodv ? "aodv" : "olsr") << "-"
+            << numNodes << "nodes-"
+            << packetSize << "bytes-"
+            << numSources << "sources";
 
-    // Config::Connect("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/MacRx",
-    //                 MakeCallback(&MacRxTrace));
+    std::string pcapDir = ssPcapDir.str();
 
-    // Config::ConnectWithoutContext("/NodeList/*/$ns3::Ipv4L3Protocol/Tx",
-    //                 MakeCallback(&IpTxTraceNoContext));
+    // Create directory
+    std::filesystem::create_directories(pcapDir);
 
-    // Config::ConnectWithoutContext("/NodeList/*/$ns3::Ipv4L3Protocol/Rx",
-    //                 MakeCallback(&IpRxTraceNoContext));
+    // Prefix inside folder
+    std::string pcapPrefix = pcapDir + "/node";
+
+    // Enable PCAP tracing
+    phy.EnablePcapAll(pcapPrefix);
 
     // Enable AODV logging when the component is available.
     LogComponentEnable("AodvRoutingProtocol", LOG_LEVEL_INFO);
@@ -322,6 +338,27 @@ int main(int argc, char *argv[])
     std::cout << "Watch packets move between nodes in NetAnim\n";
     std::cout << "PCAP traces saved to wsn-routing*.pcap files\n";
     std::cout << "Console traces will label App/MAC/IP events to map unlabeled packets\n";
+
+    // ==============================
+    // ASCII TRACE (.tr)
+    // ==============================
+
+    AsciiTraceHelper ascii;
+
+    std::stringstream traceName;
+
+    traceName << "results/tr/"
+            << (useAodv ? "aodv" : "olsr")
+            << "-"
+            << numNodes
+            << "nodes-"
+            << packetSize
+            << "bytes-"
+            << numSources
+            << "sources.tr";
+
+    phy.EnableAsciiAll(
+        ascii.CreateFileStream(traceName.str()));
 
     Simulator::Run();
 
@@ -396,7 +433,7 @@ int main(int argc, char *argv[])
 
     // Save XML report
     std::stringstream ss;
-    ss << "results-" 
+    ss << "results/xml/results-" 
        << (useAodv ? "aodv" : "olsr") << "-" 
        << numNodes << "nodes-" 
        << packetSize << "bytes-" 
