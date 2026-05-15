@@ -286,7 +286,14 @@ int main(int argc, char *argv[])
     anim.SetMobilityPollInterval(Seconds(0.1));
     
     // Enable PCAP tracing to capture all packets
-    std::string prefix = "wsn-routing";
+    std::stringstream ssPcap;
+    ssPcap << "pcap-" 
+           << (useAodv ? "aodv" : "olsr") << "-" 
+           << numNodes << "nodes-" 
+           << packetSize << "bytes-" 
+           << numSources << "sources";
+    
+    std::string prefix = ssPcap.str();
     phy.EnablePcapAll(prefix);
     
     // Configure runtime traces (App, MAC, IP) so unlabeled NetAnim packets are identifiable
@@ -388,15 +395,21 @@ int main(int argc, char *argv[])
     }
 
     // Save XML report
-    monitor->SerializeToXmlFile(
-        "wsn-results.xml",
-        true,
-        true);
+    std::stringstream ss;
+    ss << "results-" 
+       << (useAodv ? "aodv" : "olsr") << "-" 
+       << numNodes << "nodes-" 
+       << packetSize << "bytes-" 
+       << numSources << "sources.xml";
+    
+    std::string filename = ss.str();
+
+    monitor->SerializeToXmlFile(filename, true, true);
 
     Simulator::Destroy();
 
     std::cout << "\nSimulation finished.\n";
-    std::cout << "Results saved to wsn-results.xml\n";
+    std::cout << "Results saved to " << filename << "\n";
 
     return 0;
 }
