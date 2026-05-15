@@ -25,7 +25,8 @@
 #include "ns3/wifi-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/aodv-module.h"
-#include "ns3/dsdv-module.h"
+#include "ns3/olsr-module.h"
+#include <cmath>
 #include "ns3/applications-module.h"
 #include "ns3/flow-monitor-module.h"
 #include "ns3/netanim-module.h"
@@ -130,9 +131,17 @@ int main(int argc, char *argv[])
         "ControlMode", StringValue(phyMode));
 
     YansWifiPhyHelper phy;
-    YansWifiChannelHelper channel = YansWifiChannelHelper::Default();
+    // YansWifiChannelHelper channel = YansWifiChannelHelper::Default();
 
+    // phy.SetChannel(channel.Create());
+
+    YansWifiChannelHelper channel;
+    channel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+    channel.AddPropagationLoss("ns3::RangePropagationLossModel", "MaxRange", DoubleValue(1000.0));
     phy.SetChannel(channel.Create());
+
+    phy.Set("TxPowerStart", DoubleValue(40.0));
+    phy.Set("TxPowerEnd", DoubleValue(40.0));
 
     WifiMacHelper mac;
     mac.SetType("ns3::AdhocWifiMac");
@@ -144,17 +153,23 @@ int main(int argc, char *argv[])
     // MOBILITY
     // ==============================   
 
-    // Random placement in 2000x2000 area
+    // Grid in 2000x2000 area
     MobilityHelper mobility;
+    
+    uint32_t gridWidth = std::sqrt(numNodes);
+    double stepSize = 2000.0 / gridWidth;
 
     mobility.SetPositionAllocator(
-        "ns3::RandomRectanglePositionAllocator",
-        "X", StringValue("ns3::UniformRandomVariable[Min=0.0|Max=100.0]"),
-        "Y", StringValue("ns3::UniformRandomVariable[Min=0.0|Max=100.0]"));
+        "ns3::GridPositionAllocator",
+        "MinX", DoubleValue(0.0),
+        "MinY", DoubleValue(0.0),
+        "DeltaX", DoubleValue(stepSize),
+        "DeltaY", DoubleValue(stepSize),
+        "GridWidth", UintegerValue(gridWidth),
+        "LayoutType", StringValue("RowFirst"));
 
     // Static nodes
     mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
-
     mobility.Install(nodes);
 
     // ==============================
@@ -172,10 +187,10 @@ int main(int argc, char *argv[])
     }
     else
     {
-        DsdvHelper dsdv;
-        internet.SetRoutingHelper(dsdv);
+        OlsrHelper olsr; // Ganti nama helpernya jadi OLSR
+        internet.SetRoutingHelper(olsr);
 
-        std::cout << "\nUsing DSDV routing\n";
+        std::cout << "\nUsing OLSR routing (Proactive)\n";
     }
 
     internet.Install(nodes);
@@ -244,7 +259,7 @@ int main(int argc, char *argv[])
         ApplicationContainer app =
             onoff.Install(nodes.Get(i));
 
-        app.Start(Seconds(2.0 + i));
+        app.Start(Seconds(15.0 + i));
         app.Stop(Seconds(simulationTime - 1));
     }
 
@@ -275,23 +290,23 @@ int main(int argc, char *argv[])
     phy.EnablePcapAll(prefix);
     
     // Configure runtime traces (App, MAC, IP) so unlabeled NetAnim packets are identifiable
-    Config::Connect("/NodeList/*/ApplicationList/*/$ns3::OnOffApplication/Tx",
-                    MakeCallback(&AppTxTrace));
+    // Config::Connect("/NodeList/*/ApplicationList/*/$ns3::OnOffApplication/Tx",
+    //                 MakeCallback(&AppTxTrace));
 
-    Config::Connect("/NodeList/*/ApplicationList/*/$ns3::PacketSink/Rx",
-                    MakeCallback(&AppRxTrace));
+    // Config::Connect("/NodeList/*/ApplicationList/*/$ns3::PacketSink/Rx",
+    //                 MakeCallback(&AppRxTrace));
 
-    Config::Connect("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/MacTx",
-                    MakeCallback(&MacTxTrace));
+    // Config::Connect("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/MacTx",
+    //                 MakeCallback(&MacTxTrace));
 
-    Config::Connect("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/MacRx",
-                    MakeCallback(&MacRxTrace));
+    // Config::Connect("/NodeList/*/DeviceList/*/$ns3::WifiNetDevice/Mac/MacRx",
+    //                 MakeCallback(&MacRxTrace));
 
-    Config::ConnectWithoutContext("/NodeList/*/$ns3::Ipv4L3Protocol/Tx",
-                    MakeCallback(&IpTxTraceNoContext));
+    // Config::ConnectWithoutContext("/NodeList/*/$ns3::Ipv4L3Protocol/Tx",
+    //                 MakeCallback(&IpTxTraceNoContext));
 
-    Config::ConnectWithoutContext("/NodeList/*/$ns3::Ipv4L3Protocol/Rx",
-                    MakeCallback(&IpRxTraceNoContext));
+    // Config::ConnectWithoutContext("/NodeList/*/$ns3::Ipv4L3Protocol/Rx",
+    //                 MakeCallback(&IpRxTraceNoContext));
 
     // Enable AODV logging when the component is available.
     LogComponentEnable("AodvRoutingProtocol", LOG_LEVEL_INFO);
